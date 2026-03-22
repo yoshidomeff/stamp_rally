@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スタンプラリー</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif; background: #f5f4f0; min-height: 100vh; }
+    .wrap { padding: 1.5rem 1rem; max-width: 480px; margin: 0 auto; }
+    .title { text-align: center; font-size: 24px; font-weight: 500; margin-bottom: 0.4rem; color: #1a1a1a; }
+    .subtitle { text-align: center; font-size: 13px; color: #888; margin-bottom: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 1.5rem; }
+    .stamp-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 6px; border-radius: 14px; border: 1px solid #e0deda; background: #fff; }
+    .stamp-circle { width: 72px; height: 72px; border-radius: 50%; border: 2.5px dashed #ccc; display: flex; align-items: center; justify-content: center; transition: all 0.35s; }
+    .stamp-circle.stamped { border: 2.5px solid #1D9E75; background: #E1F5EE; animation: pop 0.35s ease; }
+    .stamp-icon { font-size: 30px; opacity: 0; transform: scale(0.4) rotate(-15deg); transition: all 0.35s; filter: grayscale(1); }
+    .stamped .stamp-icon { opacity: 1; transform: scale(1) rotate(-8deg); filter: none; }
+    .stamp-name { font-size: 13px; color: #888; text-align: center; line-height: 1.4; }
+    .stamp-name.done { color: #0F6E56; font-weight: 500; }
+    .progress-bar-wrap { height: 7px; background: #e8e6e0; border-radius: 99px; margin-bottom: 1.5rem; overflow: hidden; }
+    .progress-bar { height: 100%; background: #1D9E75; border-radius: 99px; transition: width 0.5s ease; }
+    .counter { text-align: center; font-size: 13px; color: #888; margin-bottom: 0.5rem; }
+    .complete-banner { display: none; background: #E1F5EE; border: 1px solid #5DCAA5; border-radius: 12px; padding: 1rem; text-align: center; margin-bottom: 1rem; }
+    .complete-banner.show { display: block; animation: pop 0.4s ease; }
+    .complete-banner p { color: #0F6E56; font-size: 15px; font-weight: 500; }
+    .complete-banner small { color: #1D9E75; font-size: 13px; }
+    .scan-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 15px; border-radius: 14px; border: 1px solid #d0ceca; background: #fff; font-size: 16px; font-weight: 500; cursor: pointer; color: #1a1a1a; transition: background 0.15s; margin-bottom: 1rem; }
+    .scan-btn:hover { background: #f0ede8; }
+    .scan-btn svg { width: 22px; height: 22px; flex-shrink: 0; }
+    .already-msg { background: #f0ede8; border-radius: 10px; padding: 8px 12px; font-size: 13px; color: #666; text-align: center; margin-bottom: 1rem; display: none; }
+    .already-msg.show { display: block; }
+    /* カメラオーバーレイ */
+    .cam-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 3rem; z-index: 99; }
+    .cam-overlay.show { display: flex; }
+    .camera-wrap { position: relative; width: 100%; max-width: 400px; }
+    #preview { width: 100%; border-radius: 14px; display: block; }
+    #qr-canvas { display: none; }
+    .scan-frame { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 60%; aspect-ratio: 1; border: 2px solid rgba(255,255,255,0.6); border-radius: 10px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.45); pointer-events: none; }
+    .corner { position: absolute; width: 20px; height: 20px; border-color: #1D9E75; border-style: solid; }
+    .corner.tl { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .corner.tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .corner.bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .corner.br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+    .scan-status { color: #fff; font-size: 14px; text-align: center; margin: 1.2rem 0 0.5rem; padding: 0 1.5rem; min-height: 22px; }
+    .scan-status.found { color: #5DCAA5; font-weight: 500; }
+    .scan-status.error { color: #F09595; }
+    .close-cam { margin-top: 1rem; padding: 10px 32px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.3); background: transparent; color: #fff; font-size: 14px; cursor: pointer; }
+    .close-cam:hover { background: rgba(255,255,255,0.1); }
+    /* モーダル共通 */
+    .backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 198; }
+    .backdrop.show { display: block; }
+    .modal { background: #fff; border-radius: 16px; padding: 1.5rem; max-width: 300px; width: 90%; text-align: center; border: 1px solid #e0deda; position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 199; display: none; }
+    .modal.show { display: block; animation: pop-center 0.3s ease; }
+    .modal p { font-size: 15px; color: #1a1a1a; margin-bottom: 0.4rem; font-weight: 500; }
+    .modal small { font-size: 13px; color: #888; display: block; margin-bottom: 1.2rem; }
+    .modal-actions { display: flex; gap: 10px; }
+    .modal-actions button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid #d0ceca; background: #f5f4f0; font-size: 14px; cursor: pointer; color: #1a1a1a; transition: background 0.15s; }
+    .modal-actions .confirm-green { background: #1D9E75; border-color: #1D9E75; color: #fff; font-weight: 500; }
+    .modal-actions .confirm-green:hover { background: #0F6E56; }
+    .modal-actions .confirm-red { background: #E24B4A; border-color: #E24B4A; color: #fff; font-weight: 500; }
+    .modal-actions .confirm-red:hover { background: #A32D2D; }
+    .reset-btn { display: block; margin: 0.5rem auto 0; font-size: 12px; color: #aaa; background: none; border: none; cursor: pointer; text-decoration: underline; padding: 6px 10px; }
+    @keyframes pop { 0%{transform:scale(0.85)} 60%{transform:scale(1.1)} 100%{transform:scale(1)} }
+    @keyframes pop-center { 0%{transform:translate(-50%,-50%) scale(0.85)} 60%{transform:translate(-50%,-50%) scale(1.08)} 100%{transform:translate(-50%,-50%) scale(1)} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">🏮 スタンプラリー</div>
+    <div class="subtitle">QRコードを読み取ってスタンプを集めよう！</div>
+    <div class="complete-banner" id="banner">
+      <p>🎉 全スタンプ制覇！</p>
+      <small>おめでとうございます！全ブースを回りました</small>
+    </div>
+    <div class="counter" id="counter">0 / 5 ブース</div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progress" style="width:0%"></div></div>
+    <div class="grid" id="grid"></div>
+    <div class="already-msg" id="already-msg"></div>
+    <button class="scan-btn" id="open-camera">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/>
+        <rect x="3" y="16" width="5" height="5" rx="1"/>
+        <path d="M16 16h2v2h-2zM18 18h2v2h-2zM16 20h2"/><path d="M20 16v2"/>
+        <path d="M9 4h6M4 9v6M20 9v3M9 20h3"/>
+      </svg>
+      QRコードを読み取る
+    </button>
+    <button class="reset-btn" id="reset-btn">リセット</button>
+  </div>
+
+  <!-- カメラオーバーレイ -->
+  <div class="cam-overlay" id="cam-overlay">
+    <div class="camera-wrap">
+      <video id="preview" playsinline autoplay muted></video>
+      <canvas id="qr-canvas"></canvas>
+      <div class="scan-frame">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+      </div>
+    </div>
+    <div class="scan-status" id="scan-status">QRコードを枠内に合わせてください</div>
+    <button class="close-cam" id="close-cam">閉じる</button>
+  </div>
+
+  <!-- スタンプ確認モーダル -->
+  <div class="backdrop" id="stamp-backdrop"></div>
+  <div class="modal" id="stamp-modal">
+    <p id="stamp-modal-title"></p>
+    <small>QRコードを読み取りました。スタンプを押しますか？</small>
+    <div class="modal-actions">
+      <button id="stamp-cancel-btn">キャンセル</button>
+      <button class="confirm-green" id="stamp-confirm-btn">スタンプを押す！</button>
+    </div>
+  </div>
+
+  <!-- リセット確認モーダル -->
+  <div class="backdrop" id="reset-backdrop"></div>
+  <div class="modal" id="reset-modal">
+    <p>リセットしますか？</p>
+    <small>集めたスタンプがすべて消えます。この操作は元に戻せません。</small>
+    <div class="modal-actions">
+      <button id="reset-cancel-btn">キャンセル</button>
+      <button class="confirm-red" id="reset-confirm-btn">リセット</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script>
+    const booths = [
+      { id: 0, name: "射的",       qr: "booth:0", icon: "🎯" },
+      { id: 1, name: "ボールすくい", qr: "booth:1", icon: "🎱" },
+      { id: 2, name: "輪投げ",      qr: "booth:2", icon: "🪃" },
+      { id: 3, name: "金魚すくい",  qr: "booth:3", icon: "🐟" },
+      { id: 4, name: "ボール投げ",  qr: "booth:4", icon: "⚾" },
+    ];
+
+    const KEY = "stamp_rally_v1";
+    function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch(e) { return []; } }
+    function save(arr) { try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch(e) {} }
+
+    let stamped = load();
+    let pendingId = null;
+    let stream = null;
+    let rafId = null;
+    let scanCooldown = false;
+
+    function render() {
+      const grid = document.getElementById("grid");
+      grid.innerHTML = "";
+      booths.forEach(b => {
+        const isStamped = stamped.includes(b.id);
+        const card = document.createElement("div");
+        card.className = "stamp-card";
+        card.innerHTML = `
+          <div class="stamp-circle${isStamped ? " stamped" : ""}">
+            <span class="stamp-icon">${b.icon}</span>
+          </div>
+          <span class="stamp-name${isStamped ? " done" : ""}">${b.name}</span>
+        `;
+        grid.appendChild(card);
+      });
+      const count = stamped.length;
+      document.getElementById("counter").textContent = `${count} / ${booths.length} ブース`;
+      document.getElementById("progress").style.width = `${(count / booths.length) * 100}%`;
+      document.getElementById("banner").className = "complete-banner" + (count === booths.length ? " show" : "");
+    }
+
+    async function startCamera() {
+      const statusEl = document.getElementById("scan-status");
+      statusEl.textContent = "カメラを起動中...";
+      statusEl.className = "scan-status";
+      document.getElementById("cam-overlay").classList.add("show");
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+        const video = document.getElementById("preview");
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          statusEl.textContent = "QRコードを枠内に合わせてください";
+          scanLoop();
+        };
+      } catch(e) {
+        statusEl.textContent = "カメラの起動に失敗しました。ブラウザの設定でカメラを許可してください。";
+        statusEl.className = "scan-status error";
+      }
+    }
+
+    function scanLoop() {
+      const video = document.getElementById("preview");
+      const canvas = document.getElementById("qr-canvas");
+      const ctx = canvas.getContext("2d");
+      function tick() {
+        if (!stream) return;
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+          if (code && !scanCooldown) onQRDetected(code.data);
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function onQRDetected(data) {
+      const booth = booths.find(b => b.qr === data);
+      const statusEl = document.getElementById("scan-status");
+      if (!booth) {
+        scanCooldown = true;
+        statusEl.textContent = "対応していないQRコードです";
+        statusEl.className = "scan-status error";
+        setTimeout(() => {
+          statusEl.textContent = "QRコードを枠内に合わせてください";
+          statusEl.className = "scan-status";
+          scanCooldown = false;
+        }, 2000);
+        return;
+      }
+      scanCooldown = true;
+      stopCamera();
+      if (stamped.includes(booth.id)) {
+        const el = document.getElementById("already-msg");
+        el.textContent = `${booth.icon} 「${booth.name}」はすでにスタンプ済みです`;
+        el.classList.add("show");
+        setTimeout(() => el.classList.remove("show"), 3000);
+        return;
+      }
+      pendingId = booth.id;
+      document.getElementById("stamp-modal-title").textContent = `${booth.icon} 「${booth.name}」`;
+      document.getElementById("stamp-backdrop").classList.add("show");
+      document.getElementById("stamp-modal").classList.add("show");
+    }
+
+    function stopCamera() {
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      document.getElementById("cam-overlay").classList.remove("show");
+      scanCooldown = false;
+    }
+
+    document.getElementById("open-camera").onclick = startCamera;
+    document.getElementById("close-cam").onclick = stopCamera;
+
+    document.getElementById("stamp-cancel-btn").onclick = () => {
+      document.getElementById("stamp-backdrop").classList.remove("show");
+      document.getElementById("stamp-modal").classList.remove("show");
+      pendingId = null;
+    };
+    document.getElementById("stamp-confirm-btn").onclick = () => {
+      if (pendingId !== null && !stamped.includes(pendingId)) {
+        stamped.push(pendingId);
+        save(stamped);
+        render();
+      }
+      document.getElementById("stamp-backdrop").classList.remove("show");
+      document.getElementById("stamp-modal").classList.remove("show");
+      pendingId = null;
+    };
+
+    document.getElementById("reset-btn").onclick = () => {
+      document.getElementById("reset-backdrop").classList.add("show");
+      document.getElementById("reset-modal").classList.add("show");
+    };
+    document.getElementById("reset-cancel-btn").onclick = () => {
+      document.getElementById("reset-backdrop").classList.remove("show");
+      document.getElementById("reset-modal").classList.remove("show");
+    };
+    document.getElementById("reset-confirm-btn").onclick = () => {
+      stamped = [];
+      localStorage.removeItem(KEY);
+      document.getElementById("reset-backdrop").classList.remove("show");
+      document.getElementById("reset-modal").classList.remove("show");
+      render();
+    };
+
+    render();
+  </script>
+</body>
+</html>
